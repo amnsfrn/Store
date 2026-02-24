@@ -73,7 +73,7 @@ with t_caisse:
 
     st.subheader("🛒 Terminal de Vente")
 
-    # ===== RECHERCHE SIMPLE =====
+    # ===== RECHERCHE SIMPLE AVEC CLIC DIRECT =====
     st.write("### 🔍 Ajouter un article")
 
     recherche = st.text_input("Tapez le nom de l'article :", key="recherche")
@@ -83,31 +83,26 @@ with t_caisse:
         suggestions = df_stock[
             df_stock["Article"].str.contains(recherche, case=False, na=False) &
             (df_stock["Quantite"] > 0)
-        ]["Article"].tolist()
+        ]
 
-        if suggestions:
+        if not suggestions.empty:
 
-            article_choisi = st.selectbox(
-                "Sélectionner l'article :",
-                suggestions
-            )
+            for _, item in suggestions.iterrows():
 
-            if article_choisi:
+                if st.button(f"{item['Article']} - {item['PV']} DA", key=f"add_{item['Article']}"):
 
-                article_data = df_stock[df_stock["Article"] == article_choisi].iloc[0]
+                    if not any(p['Article'] == item['Article'] for p in st.session_state['panier']):
+                        st.session_state['panier'].append({
+                            'Article': item['Article'],
+                            'PV': float(item['PV']),
+                            'Qte': 1,
+                            'PA': float(item['PA']),
+                            'Frais': float(item['Frais']),
+                            'Max': int(item['Quantite'])
+                        })
 
-                if not any(p['Article'] == article_choisi for p in st.session_state['panier']):
-                    st.session_state['panier'].append({
-                        'Article': article_choisi,
-                        'PV': float(article_data['PV']),
-                        'Qte': 1,
-                        'PA': float(article_data['PA']),
-                        'Frais': float(article_data['Frais']),
-                        'Max': int(article_data['Quantite'])
-                    })
-
-                st.session_state['recherche'] = ""
-                st.rerun()
+                    st.session_state['recherche'] = ""
+                    st.rerun()
 
     st.divider()
 
