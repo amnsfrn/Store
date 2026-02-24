@@ -1,135 +1,111 @@
 import streamlit as st
 import pandas as pd
 import os
+from datetime import datetime
 
-# Configuration de l'application
-st.set_page_config(page_title="Gestion Magasin DZ", page_icon="🇩🇿")
+# Configuration
+st.set_page_config(page_title="Gestion Magasin DZ", layout="wide")
 
-# --- MOT DE PASSE PATRON ---
-CODE_PATRON = "9696" 
+# --- PARAMÈTRES FIXES ---
+CODE_PATRON = "9696"
 
-# --- FONCTIONS DE SAUVEGARDE ---
-def load_data(file):
+# --- CHARGEMENT DES DONNÉES ---
+def load_data(file, columns):
     if os.path.exists(file):
         return pd.read_csv(file)
-    if "stock" in file:
-        return pd.DataFrame(columns=["Article", "PA", "Frais", "PV", "Quantite"])
-    return pd.DataFrame(columns=["Date", "Article", "Qte", "Vente_Total", "Benefice"])
+    return pd.DataFrame(columns=columns)
 
 def save_data(df, file):
     df.to_csv(file, index=False)
 
-# Chargement des données
-df_stock = load_data("stock.csv")
-df_ventes = load_data("ventes.csv")
+df_stock = load_data("stock.csv", ["Article", "PA", "Frais", "PV", "Quantite"])
+df_ventes = load_data("ventes.csv", ["Date", "Article", "Qte", "Vente_Total", "Benefice"])
+# Fichier pour stocker Loyer/Salaire
+df_config = load_data("config.csv", ["Type", "Valeur"])
 
-# --- BARRE LATÉRALE (ZONE SÉCURISÉE) ---
-st.sidebar.title("🔐 Accès Administration")
-password = st.sidebar.text_input("Code Patron", type="password")
-is_admin = (password == CODE_PATRON)
+# --- ACCÈS ---
+st.sidebar.title("🔐 Administration")
+pwd = st.sidebar.text_input("Code Patron", type="password")
+is_admin = (pwd == CODE_PATRON)
 
 if is_admin:
-    st.sidebar.success("Mode Patron Activé")
+    st.title("📊 Tableau de Bord Direction")
+    
+    # --- SECTION CONFIGURATION INITIALE ---
+    with st.sidebar.expander("⚙️ Paramètres Fixes (Mensuels)"):
+        loyer_m = st.number_input("Loyer Mensuel (DA)", value=float(df_config[df_config['Type']=='Loyer']['Valeur'].values[0]) if not df_config[df_config['Type']=='Loyer'].empty else 0.0)
+        salaire_m = st.number_input("Salaire Employé (DA)", value=float(df_config[df_config['Type']=='Salaire']['Valeur'].values[0]) if not df_config[df_config['Type']=='Salaire'].empty else 0.0)
+        
+        if st.button("Enregistrer Paramètres"):
+            df_config = pd.DataFrame([["Loyer", loyer_m], ["Salaire", salaire_m]], columns=["Type", "Valeur"])
+            save_data(df_config, "config.csv")
+            st.success("Paramètres mis à jour !")
+
+    # --- CALCULS FINANCIERS ---
+    charges_mensuelles = loyer_m + salaire_m
+    charge_journaliere = charges_mensuelles / 30
+    
+    brut_total = df_ventes['Benefice'].sum()
+    # On calcule les charges cumulées depuis le début du mois (ou total)
+    net_total = brut_total - charges_mensuelles # Ici on retire le mois complet par défaut
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Bénéfice Brut", f"{brut_total:,.2f} DA")
+    col2.metric("Charges Fixes", f"- {charges_mensuelles:,.2f} DA", help="Loyer + Salaire")
+    col3.metric("Bénéfice NET", f"{net_total:,.2f} DA", delta_color="normal")
+
+    tabs = st.tabs(["💰 Ventes", "📦 Stocks & Alertes", "📈 Historique & Calendrier"])
+
+    # ONGLET STOCKS
+    with tabs[1]:
+        st.subheader("Gestion des Articles")
+        low_stock = df_stock[df_stock['Quantite'] <= 5]
+        if not low_stock.empty:
+            st.error(f"⚠️ Alerte : {len(low_stock)} articles bientôt épuisés !")
+        st.dataframe(df_stock, use_container_width=True)
+        
+        with st.expander("Ajouter un nouveau produit"):
+            n = st.text_input("Nom")
+            c1, c2 = st.columns(2)
+            pa = c1.number_input("Prix d'Achat")
+            fr = c1.number_input("Frais")
+            pv = c2.number_input("Prix de Vente")
+            qt = c2.number_input("Quantité")
+            if st.button("Valider l'ajout"):
+                new = pd.DataFrame([[n, pa, fr, pv, qt]], columns=df_stock.columns)
+                df_stock = pd.concat([df_stock, new], ignore_index=True)
+                save_data(df_stock, "stock.csv")
+                st.rerun()
+
+    # ONGLET HISTORIQUE
+    with tabs[2]:
+        st.subheader("Historique des Ventes")
+        st.dataframe(df_ventes, use_container_width=True)
+        st.write(f"**Analyse :** Le coût de fonctionnement de votre magasin est de **{charge_journaliere:,.2f} DA par jour**.")
+
+# --- LOGIQUE EMPLOYÉ ---
 else:
-    st.sidebar.info("Mode Employé : Prix d'achat masqués")
-
-# --- AFFICHAGE DU CAPITAL (UNIQUEMENT POUR LE PATRON) ---
-if is_admin:
-    st.title("📊 Tableau de Bord Patron")
-    valeur_stock = ((df_stock['PA'] + df_stock['Frais']) * df_stock['Quantite']).sum()
-    profit_total = df_ventes['Benefice'].sum()
-    capital = valeur_stock + profit_total
-
-    c1, c2 = st.columns(2)
-    c1.metric("Capital Global (Stock + Profit)", f"{capital:,.2f} DA")
-    c2.metric("Bénéfice Total Réalisé", f"{profit_total:,.2f} DA")
-    st.write("---")
-
-# --- INTERFACE PRINCIPALE ---
-if is_admin:
-    tabs = st.tabs(["💰 Enregistrer Vente", "📦 Gérer Stock & Prix", "📈 Analyses & Historique"])
-else:
-    tabs = st.tabs(["💰 Caisse (Ventes)"])
     st.title("🏪 Caisse Magasin")
-
-# --- ONGLET VENTES (ACCESSIBLE À TOUS) ---
-with tabs[0]:
-    st.subheader("Nouvelle Vente")
     if not df_stock.empty:
-        article = st.selectbox("Sélectionner l'article", df_stock["Article"])
-        
-        # On affiche seulement le prix de vente à l'employé
-        prix_v_actuel = df_stock[df_stock["Article"] == article]["PV"].values[0]
-        st.info(f"Prix de vente : {prix_v_actuel:,.2f} DA")
-        
-        qte = st.number_input("Quantité vendue", min_value=1, step=1)
-        
+        art = st.selectbox("Article", df_stock["Article"])
+        prix_v = df_stock[df_stock["Article"] == art]["PV"].values[0]
+        st.info(f"Prix : {prix_v:,.2f} DA")
+        qte = st.number_input("Quantité", min_value=1)
         if st.button("Valider la Vente"):
-            item = df_stock[df_stock["Article"] == article].iloc[0]
-            
-            if item["Quantite"] >= qte:
-                total_v = qte * item["PV"]
-                # Le calcul du bénéfice se fait en arrière-plan (invisible pour l'employé)
-                total_b = qte * (item["PV"] - (item["PA"] + item["Frais"]))
+            row = df_stock[df_stock["Article"] == art].iloc[0]
+            if row["Quantite"] >= qte:
+                benef_vente = qte * (row["PV"] - (row["PA"] + row["Frais"]))
+                total_vente = qte * row["PV"]
                 
-                # Mise à jour des ventes
-                nouveau = pd.DataFrame([[pd.Timestamp.now().strftime("%d/%m/%Y"), article, qte, total_v, total_b]], columns=df_ventes.columns)
-                df_ventes = pd.concat([df_ventes, nouveau], ignore_index=True)
-                
-                # Mise à jour du stock
-                df_stock.loc[df_stock["Article"] == article, "Quantite"] -= qte
+                # Sauvegarde vente
+                new_v = pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), art, qte, total_vente, benef_vente]], columns=df_ventes.columns)
+                df_ventes = pd.concat([df_ventes, new_v], ignore_index=True)
+                # Maj Stock
+                df_stock.loc[df_stock["Article"] == art, "Quantite"] -= qte
                 
                 save_data(df_ventes, "ventes.csv")
                 save_data(df_stock, "stock.csv")
-                st.success(f"Vente enregistrée : {total_v:,.2f} DA")
-                st.balloons()
+                st.success("Vente réussie !")
                 st.rerun()
             else:
-                st.error("Stock insuffisant pour cette vente !")
-    else:
-        st.warning("Le stock est vide. Veuillez demander au patron d'ajouter des articles.")
-
-# --- ONGLETS RÉSERVÉS AU PATRON ---
-if is_admin:
-    with tabs[1]:
-        st.subheader("Configuration du Stock et des Coûts")
-        with st.expander("➕ Ajouter un nouveau produit"):
-            n = st.text_input("Nom de l'article")
-            col_a, col_b = st.columns(2)
-            pa = col_a.number_input("Prix d'Achat (DA)", min_value=0.0)
-            fr = col_a.number_input("Frais (Transport, Douane...) (DA)", min_value=0.0)
-            pv = col_b.number_input("Prix de Vente au Client (DA)", min_value=0.0)
-            qt = col_b.number_input("Quantité en stock", min_value=0)
-            
-            if st.button("Ajouter à l'inventaire"):
-                if n:
-                    nouvel_art = pd.DataFrame([[n, pa, fr, pv, qt]], columns=df_stock.columns)
-                    df_stock = pd.concat([df_stock, nouvel_art], ignore_index=True)
-                    save_data(df_stock, "stock.csv")
-                    st.success(f"{n} ajouté au stock.")
-                    st.rerun()
-                else:
-                    st.error("Veuillez donner un nom à l'article.")
-        
-        st.write("### Inventaire Complet")
-        st.dataframe(df_stock, use_container_width=True)
-
-    with tabs[2]:
-        st.subheader("Analyses du Magasin")
-        if not df_ventes.empty:
-            col_an1, col_an2 = st.columns(2)
-            
-            with col_an1:
-                st.write("**Top des ventes (Quantité)**")
-                top = df_ventes.groupby("Article")["Qte"].sum().sort_values(ascending=False)
-                st.bar_chart(top)
-            
-            with col_an2:
-                st.write("**Bénéfice par article**")
-                benef_art = df_ventes.groupby("Article")["Benefice"].sum().sort_values(ascending=False)
-                st.bar_chart(benef_art)
-
-            st.write("### Historique détaillé des transactions")
-            st.dataframe(df_ventes, use_container_width=True)
-        else:
-            st.info("Aucune donnée de vente disponible pour l'analyse.")
+                st.error("Stock insuffisant")
