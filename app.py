@@ -6,11 +6,10 @@ from datetime import datetime
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Happy Store Kids", layout="wide", page_icon="🛍️")
 
-# Initialisation session
 if 'acces_autorise' not in st.session_state: st.session_state['acces_autorise'] = False
 if 'admin_connecte' not in st.session_state: st.session_state['admin_connecte'] = False
 
-# --- FONCTIONS DONNÉES ---
+# --- CHARGEMENT ---
 def load_data(file, columns):
     if os.path.exists(file):
         try:
@@ -24,14 +23,13 @@ def load_data(file, columns):
 def save_data(df, file):
     df.to_csv(file, index=False)
 
-# Chargement
 df_stock = load_data("stock.csv", ["Article", "PA", "Frais", "PV", "Quantite"])
 df_ventes = load_data("ventes.csv", ["Date", "Article", "Qte", "Vente_Total", "Benefice"])
 df_demandes = load_data("demandes.csv", ["Date", "Article", "Qte", "PV_Suggere"])
 
 # --- CONNEXION ---
 if not st.session_state['acces_autorise'] and not st.session_state['admin_connecte']:
-    st.title("🔐 Connexion Happy Store Kids")
+    st.title("🔐 Happy Store Kids")
     u = st.text_input("Utilisateur")
     p = st.text_input("Mot de passe", type="password")
     if st.button("Se connecter"):
@@ -46,95 +44,92 @@ if not st.session_state['acces_autorise'] and not st.session_state['admin_connec
 
 # --- BARRE LATÉRALE ---
 with st.sidebar:
-    st.title("⚙️ Menu")
-    if st.button("🔴 SE DÉCONNECTER", use_container_width=True):
+    if st.button("🔴 DÉCONNEXION", use_container_width=True):
         st.session_state.clear()
         st.rerun()
 
 is_admin = st.session_state['admin_connecte']
 
 # --- NAVIGATION ---
-# Correction de l'erreur NameError : On définit 'tabs' AVANT de les utiliser
 if is_admin:
     tabs = st.tabs(["🛒 Caisse Directe", "📦 Gestion Stock", "✅ Validations", "📊 Rapports"])
 else:
     tabs = st.tabs(["🛒 Caisse Directe", "📩 Envoyer Arrivage"])
 
-# --- 1. ONGLET CAISSE ---
+# --- 1. CAISSE (RECHERCHE AU CLAVIER FORCÉE) ---
 with tabs[0]:
     st.subheader("🛒 Terminal de Vente")
     if df_stock.empty:
-        st.info("Le stock est vide.")
+        st.info("Stock vide.")
     else:
-        liste_art = sorted(df_stock["Article"].unique().tolist())
-        # Recherche prédictive (tapez au clavier)
-        choix = st.selectbox("🔍 Chercher un article :", [""] + liste_art)
+        # Utilisation de text_input pour FORCER l'ouverture du clavier sur mobile
+        recherche = st.text_input("⌨️ TAPEZ LE NOM DE L'ARTICLE :", placeholder="Ex: Robe, Jeans...")
         
-        if choix != "":
-            info = df_stock[df_stock["Article"] == choix].iloc[0]
-            with st.form("form_vente_final", clear_on_submit=True):
-                st.markdown(f"### 📦 {choix}")
-                col1, col2 = st.columns(2)
-                p_v = col1.number_input("Prix de vente (DA)", value=float(info['PV']))
-                q_v = col2.number_input("Quantité", min_value=1, max_value=int(info['Quantite']), step=1)
+        if recherche:
+            # Filtrer les articles qui contiennent les lettres tapées
+            suggestions = df_stock[df_stock["Article"].str.contains(recherche, case=False, na=False)]
+            
+            if not suggestions.empty:
+                choix = st.selectbox("Confirmez l'article trouvé :", suggestions["Article"].tolist())
                 
-                if st.form_submit_button("✅ VALIDER LA VENTE"):
-                    benef = q_v * (p_v - (info['PA'] + info['Frais']))
-                    new_v = pd.DataFrame([[datetime.now().date(), choix, q_v, q_v*p_v, benef]], columns=df_ventes.columns)
-                    df_ventes = pd.concat([df_ventes, new_v], ignore_index=True)
-                    df_stock.loc[df_stock["Article"] == choix, "Quantite"] -= q_v
-                    save_data(df_ventes, "ventes.csv"); save_data(df_stock, "stock.csv")
-                    st.success("Vente réussie !")
-                    st.rerun()
+                info = df_stock[df_stock["Article"] == choix].iloc[0]
+                with st.form("vente_form", clear_on_submit=True):
+                    st.markdown(f"### 📦 {choix}")
+                    st.write(f"Stock actuel : {int(info['Quantite'])}")
+                    c1, c2 = st.columns(2)
+                    p_v = c1.number_input("Prix (DA)", value=float(info['PV']))
+                    q_v = c2.number_input("Quantité", min_value=1, max_value=int(info['Quantite']), step=1)
+                    
+                    if st.form_submit_button("✅ VALIDER LA VENTE"):
+                        benef = q_v * (p_v - (info['PA'] + info['Frais']))
+                        new_v = pd.DataFrame([[datetime.now().date(), choix, q_v, q_v*p_v, benef]], columns=df_ventes.columns)
+                        df_ventes = pd.concat([df_ventes, new_v], ignore_index=True)
+                        df_stock.loc[df_stock["Article"] == choix, "Quantite"] -= q_v
+                        save_data(df_ventes, "ventes.csv"); save_data(df_stock, "stock.csv")
+                        st.success("Vendu !")
+                        st.rerun()
+            else:
+                st.warning("Aucun article ne correspond à votre recherche.")
 
-# --- 2. GESTION & VALIDATIONS (ADMIN) ---
+# --- 2. GESTION STOCK (MODIFICATION AVEC RECHERCHE CLAVIER) ---
 if is_admin:
     with tabs[1]:
-        st.subheader("📦 Modification du Stock")
-        art_edit = st.selectbox("Sélectionner un article", [""] + sorted(df_stock["Article"].tolist()))
-        if art_edit != "":
-            idx = df_stock[df_stock["Article"] == art_edit].index[0]
-            row = df_stock.loc[idx]
-            with st.form("edit_form"):
-                n_n = st.text_input("Nom", value=row['Article'])
-                n_pa = st.number_input("PA Unit.", value=float(row['PA']))
-                n_fr = st.number_input("Frais Unit.", value=float(row['Frais']))
-                n_pv = st.number_input("PV", value=float(row['PV']))
-                n_q = st.number_input("Quantité", value=int(row['Quantite']))
-                c_b1, c_b2 = st.columns(2)
-                if c_b1.form_submit_button("💾 Sauvegarder"):
-                    df_stock.loc[idx] = [n_n, n_pa, n_fr, n_pv, n_q]
-                    save_data(df_stock, "stock.csv"); st.rerun()
-                if c_b2.form_submit_button("🗑️ Supprimer"):
-                    df_stock = df_stock.drop(idx); save_data(df_stock, "stock.csv"); st.rerun()
+        st.subheader("📦 Modifier/Supprimer")
+        recherche_edit = st.text_input("🔍 Rechercher article à modifier :", key="edit_search")
+        if recherche_edit:
+            suggestions_edit = df_stock[df_stock["Article"].str.contains(recherche_edit, case=False, na=False)]
+            if not suggestions_edit.empty:
+                art_edit = st.selectbox("Sélectionnez l'article :", suggestions_edit["Article"].tolist(), key="edit_select")
+                idx = df_stock[df_stock["Article"] == art_edit].index[0]
+                row = df_stock.loc[idx]
+                with st.form("edit_stock"):
+                    n_n = st.text_input("Nom", value=row['Article'])
+                    n_pa = st.number_input("Achat Unit.", value=float(row['PA']))
+                    n_fr = st.number_input("Frais Unit.", value=float(row['Frais']))
+                    n_pv = st.number_input("PV", value=float(row['PV']))
+                    n_q = st.number_input("Quantité", value=int(row['Quantite']))
+                    c1, c2 = st.columns(2)
+                    if c1.form_submit_button("💾 Sauvegarder"):
+                        df_stock.loc[idx] = [n_n, n_pa, n_fr, n_pv, n_q]
+                        save_data(df_stock, "stock.csv"); st.rerun()
+                    if c2.form_submit_button("🗑️ Supprimer"):
+                        df_stock = df_stock.drop(idx); save_data(df_stock, "stock.csv"); st.rerun()
 
+    # VALIDATIONS (RESTE IDENTIQUE AVEC FRAIS TOTAUX)
     with tabs[2]:
         st.subheader("✅ Valider Arrivages")
-        if df_demandes.empty: st.write("Rien en attente.")
+        if df_demandes.empty: st.write("Rien à valider.")
         else:
             for i, d in df_demandes.iterrows():
-                with st.expander(f"📦 {d['Article']} (Quantité: {d['Qte']})"):
-                    with st.form(f"val_{i}"):
-                        v_pa = st.number_input("Prix d'Achat Unitaire", min_value=0.0)
-                        # Demande spécifique : Frais totaux pour tout le lot
-                        v_fr_total = st.number_input(f"Frais de transport TOTAUX pour les {int(d['Qte'])} pièces", min_value=0.0)
-                        v_pv = st.number_input("Prix de vente final", value=float(d['PV_Suggere']))
-                        if st.form_submit_button("Valider l'entrée"):
-                            f_u = v_fr_total / d['Qte'] if d['Qte'] > 0 else 0
-                            new_i = pd.DataFrame([[d['Article'], v_pa, f_u, v_pv, d['Qte']]], columns=df_stock.columns)
-                            df_stock = pd.concat([df_stock, new_i], ignore_index=True)
+                with st.expander(f"📦 {d['Article']} ({int(d['Qte'])} pcs)"):
+                    with st.form(f"val_form_{i}"):
+                        v_pa = st.number_input("Achat Unit.", min_value=0.0)
+                        v_fr_tot = st.number_input("Frais TRANSPORT TOTAUX", min_value=0.0)
+                        v_pv = st.number_input("PV Final", value=float(d['PV_Suggere']))
+                        if st.form_submit_button("Mettre en stock"):
+                            f_u = v_fr_tot / d['Qte'] if d['Qte'] > 0 else 0
+                            new_item = pd.DataFrame([[d['Article'], v_pa, f_u, v_pv, d['Qte']]], columns=df_stock.columns)
+                            df_stock = pd.concat([df_stock, new_item], ignore_index=True)
                             df_demandes = df_demandes.drop(i)
                             save_data(df_stock, "stock.csv"); save_data(df_demandes, "demandes.csv")
                             st.rerun()
-else:
-    with tabs[1]:
-        st.subheader("📩 Déclarer un arrivage")
-        with st.form("u_form", clear_on_submit=True):
-            n = st.text_input("Article")
-            q = st.number_input("Quantité", min_value=1)
-            p = st.number_input("Prix suggéré", min_value=0.0)
-            if st.form_submit_button("Envoyer"):
-                new_d = pd.DataFrame([[datetime.now().date(), n, q, p]], columns=df_demandes.columns)
-                df_demandes = pd.concat([df_demandes, new_d], ignore_index=True)
-                save_data(df_demandes, "demandes.csv")
-                st.success("Transmis !")
