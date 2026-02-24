@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime
 
-# --- CONFIGURATION ---
+# ================= CONFIGURATION =================
 st.set_page_config(page_title="Happy Store Kids", layout="wide")
 
 if 'panier' not in st.session_state:
@@ -13,7 +13,7 @@ if 'acces_autorise' not in st.session_state:
 if 'admin_connecte' not in st.session_state:
     st.session_state['admin_connecte'] = False
 
-# --- FONCTIONS ---
+# ================= FONCTIONS =================
 def load_data(file, columns):
     if os.path.exists(file):
         try:
@@ -31,9 +31,10 @@ def save_data(df, file):
 df_stock = load_data("stock.csv", ["Article", "PA", "Frais", "PV", "Quantite"])
 df_ventes = load_data("ventes.csv", ["Date", "Article", "Qte", "Vente_Total", "Benefice"])
 
-# --- CONNEXION ---
+# ================= CONNEXION =================
 if not st.session_state['acces_autorise'] and not st.session_state['admin_connecte']:
     st.title("🔐 Happy Store Kids")
+
     u = st.text_input("Utilisateur")
     p = st.text_input("Mot de passe", type="password")
 
@@ -50,7 +51,16 @@ if not st.session_state['acces_autorise'] and not st.session_state['admin_connec
 
     st.stop()
 
-# --- ONGLETS ---
+# ================= BOUTON DECONNEXION =================
+col1, col2 = st.columns([6,1])
+with col2:
+    if st.button("🚪 Se déconnecter"):
+        st.session_state['acces_autorise'] = False
+        st.session_state['admin_connecte'] = False
+        st.session_state['panier'] = []
+        st.rerun()
+
+# ================= ONGLETS =================
 is_admin = st.session_state['admin_connecte']
 
 if is_admin:
@@ -60,40 +70,58 @@ else:
 
 # ================= CAISSE =================
 with t_caisse:
+
     st.subheader("🛒 Terminal de Vente")
 
-    recherche = st.text_input("🔍 Tapez le nom pour ajouter :")
+    # ===== RECHERCHE SIMPLE =====
+    st.write("### 🔍 Ajouter un article")
+
+    recherche = st.text_input("Tapez le nom de l'article :", key="recherche")
 
     if recherche:
-        mask = df_stock["Article"].str.contains(recherche, case=False, na=False) & (df_stock["Quantite"] > 0)
-        suggestions = df_stock[mask]
 
-        if not suggestions.empty:
-            for _, item in suggestions.iterrows():
-                col_n, col_b = st.columns([3, 1])
-                col_n.write(f"**{item['Article']}** | {item['PV']} DA")
+        suggestions = df_stock[
+            df_stock["Article"].str.contains(recherche, case=False, na=False) &
+            (df_stock["Quantite"] > 0)
+        ]["Article"].tolist()
 
-                if col_b.button("Choisir", key=f"btn_{item['Article']}"):
-                    if not any(p['Article'] == item['Article'] for p in st.session_state['panier']):
-                        st.session_state['panier'].append({
-                            'Article': item['Article'],
-                            'PV': float(item['PV']),
-                            'Qte': 1,
-                            'PA': float(item['PA']),
-                            'Frais': float(item['Frais']),
-                            'Max': int(item['Quantite'])
-                        })
-                        st.rerun()
+        if suggestions:
+
+            article_choisi = st.selectbox(
+                "Sélectionner l'article :",
+                suggestions
+            )
+
+            if article_choisi:
+
+                article_data = df_stock[df_stock["Article"] == article_choisi].iloc[0]
+
+                if not any(p['Article'] == article_choisi for p in st.session_state['panier']):
+                    st.session_state['panier'].append({
+                        'Article': article_choisi,
+                        'PV': float(article_data['PV']),
+                        'Qte': 1,
+                        'PA': float(article_data['PA']),
+                        'Frais': float(article_data['Frais']),
+                        'Max': int(article_data['Quantite'])
+                    })
+
+                st.session_state['recherche'] = ""
+                st.rerun()
 
     st.divider()
 
+    # ===== PANIER =====
     if st.session_state['panier']:
+
         total_general = 0
         st.write("### 🛍️ Articles en attente")
 
         for idx, item in enumerate(st.session_state['panier']):
+
             with st.container():
-                c1, c2, c3, c4 = st.columns([2, 1, 1, 0.5])
+                c1, c2, c3, c4 = st.columns([2,1,1,0.5])
+
                 c1.write(f"**{item['Article']}**")
 
                 prix = c2.number_input(
@@ -122,19 +150,21 @@ with t_caisse:
                 st.session_state['panier'][idx]['Qte'] = qte
 
                 total_general += prix * qte
+
                 st.write("---")
 
+        # ===== TOTAL VERT =====
         st.markdown(f"""
-            <div style="background-color:#d4edda; padding:20px; border-radius:10px; border: 2px solid #28a745; text-align:center;">
+            <div style="background-color:#d4edda; padding:20px; border-radius:10px; border:2px solid #28a745; text-align:center;">
                 <h2 style="color:#155724; margin:0;">TOTAL À PAYER</h2>
-                <h1 style="color:#28a745; margin:0; font-size: 50px;">{total_general:,.0f} DA</h1>
+                <h1 style="color:#28a745; margin:0; font-size:50px;">{total_general:,.0f} DA</h1>
             </div>
         """, unsafe_allow_html=True)
 
-        st.write("")
+        if st.button("💰 ENCAISSER", use_container_width=True, type="primary"):
 
-        if st.button("💰 ENCAISSER ET VIDER LA PAGE", use_container_width=True, type="primary"):
             for p in st.session_state['panier']:
+
                 benef = p['Qte'] * (p['PV'] - (p['PA'] + p['Frais']))
 
                 new_v = pd.DataFrame(
@@ -155,8 +185,8 @@ with t_caisse:
     else:
         st.info("Aucun article sélectionné.")
 
-# ================= STOCK (ADMIN) =================
+# ================= STOCK ADMIN =================
 if is_admin:
     with t_stock:
-        st.write("### Liste du Stock")
+        st.write("### 📦 Liste du Stock")
         st.dataframe(df_stock, use_container_width=True)
