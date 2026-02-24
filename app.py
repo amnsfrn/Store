@@ -1553,4 +1553,3 @@ elif choix_menu == "⚙️ Paramètres" and st.session_state.admin_connecte:
 
 # Vérification des stocks bas
 check_low_stock()
-```
