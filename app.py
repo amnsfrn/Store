@@ -6,10 +6,13 @@ from datetime import datetime
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="Happy Store Kids", layout="wide")
 
-# Initialisation des variables de session
-if 'panier' not in st.session_state: st.session_state['panier'] = []
-if 'acces_autorise' not in st.session_state: st.session_state['acces_autorise'] = False
-if 'admin_connecte' not in st.session_state: st.session_state['admin_connecte'] = False
+# Initialisation stricte des variables de session
+if 'panier' not in st.session_state:
+    st.session_state['panier'] = []
+if 'acces_autorise' not in st.session_state:
+    st.session_state['acces_autorise'] = False
+if 'admin_connecte' not in st.session_state:
+    st.session_state['admin_connecte'] = False
 
 # --- 2. GESTION DES DONNÉES ---
 def load_data(file, columns):
@@ -19,7 +22,8 @@ def load_data(file, columns):
             if not df.empty and 'Date' in df.columns:
                 df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce').dt.date
             return df
-        except: return pd.DataFrame(columns=columns)
+        except:
+            return pd.DataFrame(columns=columns)
     return pd.DataFrame(columns=columns)
 
 def save_data(df, file):
@@ -33,33 +37,41 @@ with st.sidebar:
     st.title("⚙️ Menu")
     if st.session_state['acces_autorise'] or st.session_state['admin_connecte']:
         if st.button("🔴 DÉCONNECTER", use_container_width=True):
-            st.session_state.clear() 
+            st.session_state.clear()
             st.rerun()
 
-# --- 4. CONNEXION (MOT DE PASSE MIS À JOUR) ---
+# --- 4. CONNEXION ---
 if not st.session_state['acces_autorise'] and not st.session_state['admin_connecte']:
     st.title("🔐 Accès Happy Store")
     u = st.text_input("Utilisateur")
     p = st.text_input("Mot de passe", type="password")
     if st.button("Se connecter"):
+        # Mot de passe admin mis à jour selon votre demande
         if u.lower() == "admin" and p == "admin0699302032":
-            st.session_state['admin_connecte'], st.session_state['acces_autorise'] = True, True
+            st.session_state['admin_connecte'] = True
+            st.session_state['acces_autorise'] = True
             st.rerun()
         elif u.lower() == "user" and p == "0699302032":
             st.session_state['acces_autorise'] = True
             st.rerun()
-        else: st.error("Identifiants incorrects")
+        else:
+            st.error("Identifiants incorrects")
     st.stop()
 
 # --- 5. NAVIGATION ---
 is_admin = st.session_state['admin_connecte']
-tabs = st.tabs(["🛒 Caisse", "📦 Stock"]) if is_admin else st.tabs(["🛒 Caisse"])
+if is_admin:
+    tabs = st.tabs(["🛒 Caisse", "📦 Stock"])
+else:
+    tabs = st.tabs(["🛒 Caisse"])
 
 # --- 6. ONGLET CAISSE ---
 with tabs[0]:
     st.subheader("🛒 Terminal de Vente")
     
-    if 'search_key' not in st.session_state: st.session_state.search_key = 0
+    if 'search_key' not in st.session_state:
+        st.session_state.search_key = 0
+    
     recherche = st.text_input("⌨️ Chercher un article :", key=f"search_{st.session_state.search_key}")
     
     if recherche:
@@ -77,9 +89,12 @@ with tabs[0]:
                             st.session_state['panier'][index_ex]['Qte'] += 1
                     else:
                         st.session_state['panier'].append({
-                            'Article': item['Article'], 'PV': float(item['PV']),
-                            'Qte': 1, 'PA': float(item['PA']),
-                            'Frais': float(item['Frais']), 'Max': int(item['Quantite'])
+                            'Article': item['Article'], 
+                            'PV': float(item['PV']),
+                            'Qte': 1, 
+                            'PA': float(item['PA']),
+                            'Frais': float(item['Frais']), 
+                            'Max': int(item['Quantite'])
                         })
                     st.session_state.search_key += 1
                     st.rerun()
@@ -87,7 +102,7 @@ with tabs[0]:
     st.divider()
 
     if st.session_state['panier']:
-        total_general = 0
+        total_general = 0.0
         st.write("### 🛍️ Panier")
         
         for idx, p in enumerate(st.session_state['panier']):
@@ -100,9 +115,9 @@ with tabs[0]:
                 st.rerun()
             total_general += (p['PV'] * p['Qte'])
 
-        # --- AFFICHAGE TOTAL SIMPLE ET TRÈS GROS ---
+        # AFFICHAGE DU TOTAL EN TRÈS GROS
         st.write("")
-        st.markdown(f"<h1 style='text-align: center; border: 2px solid black; padding: 10px;'>TOTAL : {total_general:,.0f} DA</h1>", unsafe_content_html=True)
+        st.markdown(f"<h1 style='text-align: center; border: 5px solid black; padding: 20px;'>TOTAL : {total_general:,.0f} DA</h1>", unsafe_content_html=True)
         st.write("")
 
         if st.button("💰 VALIDER ET ENCAISSER", use_container_width=True, type="primary"):
@@ -124,5 +139,5 @@ with tabs[0]:
 # --- 7. STOCK (ADMIN) ---
 if is_admin:
     with tabs[1]:
-        st.subheader("📦 Inventaire")
+        st.subheader("📦 Inventaire du Stock")
         st.dataframe(df_stock, use_container_width=True)
