@@ -37,32 +37,46 @@ df_sessions = load_data("sessions.csv", ["Horodatage", "Profil"])
 df_demandes = load_data("demandes_stock.csv", ["Date", "Article", "Qte_Ajout", "Statut"])
 df_hist_stock = load_data("hist_stock.csv", ["Date", "Article", "Qte_Ajoutee", "Par"])
 
-# --- LOGIN D'ENTRÉE ---
-if not st.session_state['acces_autorise']:
+# --- NOUVEL ÉCRAN DE CONNEXION ---
+if not st.session_state['acces_autorise'] and not st.session_state['admin_connecte']:
     st.title("🔐 Happy Store Kids - Connexion")
-    u = st.text_input("Username (Utilisateur)")
-    p = st.text_input("Mot de passe", type="password")
+    
+    choix_profil = st.radio("Se connecter en tant que :", ["Employé (Caisse)", "Propriétaire (Admin)"], horizontal=True)
+    
+    col1, col2 = st.columns(2)
+    u = col1.text_input("Nom d'utilisateur")
+    p = col2.text_input("Mot de passe", type="password")
+    
     if st.button("Se connecter"):
-        if u == "user" and p == "0699302032":
+        # Accès ADMIN Direct
+        if choix_profil == "Propriétaire (Admin)" and u == "admin" and p == "Thanksgod@99":
+            st.session_state['admin_connecte'] = True
             st.session_state['acces_autorise'] = True
+            log_session("Admin (Connexion Directe)")
+            st.rerun()
+        
+        # Accès USER
+        elif choix_profil == "Employé (Caisse)" and u == "user" and p == "0699302032":
+            st.session_state['acces_autorise'] = True
+            st.session_state['admin_connecte'] = False
             log_session("User (Employé)")
             st.rerun()
-        else: st.error("Identifiants incorrects")
+        
+        else:
+            st.error("Identifiants ou profil incorrects")
     st.stop()
 
-# --- SIDEBAR ADMIN ---
-st.sidebar.title("🛂 Contrôle")
-if not st.session_state['admin_connecte']:
-    pwd_admin = st.sidebar.text_input("Code Admin", type="password")
-    if st.sidebar.button("Débloquer Admin"):
-        if pwd_admin == "9696":
-            st.session_state['admin_connecte'] = True
-            log_session("Admin (Direction)")
-            st.rerun()
+# --- SIDEBAR ---
+st.sidebar.title("🛂 Session")
+if st.session_state['admin_connecte']:
+    st.sidebar.success("✅ Mode ADMIN actif")
 else:
-    if st.sidebar.button("🔴 Déconnexion Admin"):
-        st.session_state['admin_connecte'] = False
-        st.rerun()
+    st.sidebar.info("👤 Mode EMPLOYÉ")
+
+if st.sidebar.button("🔴 Déconnexion"):
+    st.session_state['acces_autorise'] = False
+    st.session_state['admin_connecte'] = False
+    st.rerun()
 
 is_admin = st.session_state['admin_connecte']
 
@@ -93,14 +107,14 @@ if is_admin:
         with col2:
             st.subheader("⚡ Alimentation DIRECTE")
             art_a = st.selectbox("Article à ajouter", df_stock["Article"], key="adm_add")
-            qte_a = st.number_input("Quantité à ajouter au stock", min_value=1)
-            if st.button("Ajouter Directement"):
+            qte_a = st.number_input("Quantité à ajouter", min_value=1)
+            if st.button("Ajouter au stock maintenant"):
                 idx = df_stock[df_stock["Article"] == art_a].index[0]
                 df_stock.at[idx, "Quantite"] += qte_a
                 new_h = pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), art_a, qte_a, "Admin (Direct)"]], columns=df_hist_stock.columns)
                 df_hist_stock = pd.concat([df_hist_stock, new_h], ignore_index=True)
                 save_data(df_stock, "stock.csv"); save_data(df_hist_stock, "hist_stock.csv")
-                st.success(f"Stock mis à jour : {art_a} (+{qte_a})")
+                st.success(f"Stock mis à jour !")
                 st.rerun()
         st.divider()
         st.subheader("📦 État du Stock")
@@ -136,7 +150,7 @@ else: # INTERFACE EMPLOYÉ
             save_data(df_demandes, "demandes_stock.csv")
             st.info("Demande envoyée à l'Admin.")
 
-# --- MODULE CAISSE (COMMUN) ---
+# --- MODULE CAISSE ---
 with (tabs[0] if is_admin else t1):
     mode = st.radio("Action", ["Vente", "Retour Article", "Fin de Journée"], horizontal=True)
     if mode == "Fin de Journée":
