@@ -16,7 +16,7 @@ if not st.session_state['acces_autorise']:
     st.title("🔐 Accès Sécurisé")
     entree = st.text_input("Mot de passe d'accès", type="password")
     if st.button("Entrer"):
-        if entree == "happystorekids":
+        if entree == "0699302032":
             st.session_state['acces_autorise'] = True
             st.rerun()
         else:
