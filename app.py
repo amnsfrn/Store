@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime
 
-# --- 1. CONFIGURATION & INITIALISATION ---
+# --- CONFIGURATION ---
 st.set_page_config(page_title="Happy Store Kids", layout="wide")
 
 if 'panier' not in st.session_state:
@@ -13,7 +13,7 @@ if 'acces_autorise' not in st.session_state:
 if 'admin_connecte' not in st.session_state:
     st.session_state['admin_connecte'] = False
 
-# --- 2. FONCTIONS DE DONNÉES ---
+# --- FONCTIONS ---
 def load_data(file, columns):
     if os.path.exists(file):
         try:
@@ -31,14 +31,14 @@ def save_data(df, file):
 df_stock = load_data("stock.csv", ["Article", "PA", "Frais", "PV", "Quantite"])
 df_ventes = load_data("ventes.csv", ["Date", "Article", "Qte", "Vente_Total", "Benefice"])
 
-# --- 3. CONNEXION ---
+# --- CONNEXION ---
 if not st.session_state['acces_autorise'] and not st.session_state['admin_connecte']:
     st.title("🔐 Happy Store Kids")
     u = st.text_input("Utilisateur")
     p = st.text_input("Mot de passe", type="password")
 
     if st.button("Se connecter"):
-        if u.lower() == "admin" and p == "Thanksgod@99":
+        if u.lower() == "admin" and p == "admin0699302032":
             st.session_state['admin_connecte'] = True
             st.session_state['acces_autorise'] = True
             st.rerun()
@@ -50,7 +50,7 @@ if not st.session_state['acces_autorise'] and not st.session_state['admin_connec
 
     st.stop()
 
-# --- 4. ONGLETS ---
+# --- ONGLETS ---
 is_admin = st.session_state['admin_connecte']
 
 if is_admin:
@@ -58,11 +58,11 @@ if is_admin:
 else:
     t_caisse = st.tabs(["🛒 Caisse Directe"])[0]
 
-# --- 5. CAISSE ---
+# ================= CAISSE =================
 with t_caisse:
     st.subheader("🛒 Terminal de Vente")
 
-    recherche = st.text_input("🔍 Tapez le nom pour ajouter :", key="search_input")
+    recherche = st.text_input("🔍 Tapez le nom pour ajouter :")
 
     if recherche:
         mask = df_stock["Article"].str.contains(recherche, case=False, na=False) & (df_stock["Quantite"] > 0)
@@ -91,22 +91,39 @@ with t_caisse:
         total_general = 0
         st.write("### 🛍️ Articles en attente")
 
-        for idx, p in enumerate(st.session_state['panier']):
+        for idx, item in enumerate(st.session_state['panier']):
             with st.container():
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 0.5])
-                c1.write(f"**{p['Article']}**")
+                c1.write(f"**{item['Article']}**")
 
-                p['PV'] = c2.number_input("Prix", value=p['PV'], key=f"pv_{idx}", step=50.0)
-                p['Qte'] = c3.number_input("Qté", min_value=1, max_value=p['Max'], value=p['Qte'], key=f"q_{idx}")
+                prix = c2.number_input(
+                    "Prix",
+                    value=float(item['PV']),
+                    step=50.0,
+                    key=f"pv_{idx}"
+                )
+
+                qte = c3.number_input(
+                    "Qté",
+                    min_value=1,
+                    max_value=int(item['Max']),
+                    value=int(item['Qte']),
+                    key=f"q_{idx}"
+                )
 
                 if c4.button("❌", key=f"del_{idx}"):
                     st.session_state['panier'].pop(idx)
                     st.rerun()
 
-                total_general += (p['PV'] * p['Qte'])
+                prix = float(prix)
+                qte = int(qte)
+
+                st.session_state['panier'][idx]['PV'] = prix
+                st.session_state['panier'][idx]['Qte'] = qte
+
+                total_general += prix * qte
                 st.write("---")
 
-        # TOTAL VERT
         st.markdown(f"""
             <div style="background-color:#d4edda; padding:20px; border-radius:10px; border: 2px solid #28a745; text-align:center;">
                 <h2 style="color:#155724; margin:0;">TOTAL À PAYER</h2>
@@ -126,7 +143,6 @@ with t_caisse:
                 )
 
                 df_ventes = pd.concat([df_ventes, new_v], ignore_index=True)
-
                 df_stock.loc[df_stock["Article"] == p['Article'], "Quantite"] -= p['Qte']
 
             save_data(df_ventes, "ventes.csv")
@@ -139,7 +155,7 @@ with t_caisse:
     else:
         st.info("Aucun article sélectionné.")
 
-# --- 6. GESTION STOCK ---
+# ================= STOCK (ADMIN) =================
 if is_admin:
     with t_stock:
         st.write("### Liste du Stock")
