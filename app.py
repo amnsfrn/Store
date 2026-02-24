@@ -64,26 +64,47 @@ if is_admin:
     with tabs[2]: # ONGLET BÉNÉFICES
         st.subheader("Analyse des Bénéfices")
         today = datetime.now().date()
+        
+        # Métriques rapides
         b_today = df_ventes[df_ventes['Date'] == today]['Benefice'].sum()
-        b_7d = df_ventes[df_ventes['Date'] >= (today - timedelta(days=7))]['Benefice'].sum()
         b_30d = df_ventes[df_ventes['Date'] >= (today - timedelta(days=30))]['Benefice'].sum()
         
-        c1, c2, c3 = st.columns(3)
+        c1, c2 = st.columns(2)
         c1.metric("Aujourd'hui", f"{b_today:,.2f} DA")
-        c2.metric("7 derniers jours", f"{b_7d:,.2f} DA")
-        c3.metric("30 derniers jours", f"{b_30d:,.2f} DA")
+        c2.metric("30 derniers jours", f"{b_30d:,.2f} DA")
         
         st.write("---")
-        st.subheader("📅 Bénéfice par calendrier")
-        choix_date = st.date_input("Choisir une date", today)
-        b_precis = df_ventes[df_ventes['Date'] == choix_date]['Benefice'].sum()
-        st.info(f"Bénéfice pour le {choix_date} : **{b_precis:,.2f} DA**")
+        st.subheader("📅 Bénéfice sur une période personnalisée")
+        
+        # SÉLECTEUR DE PLAGE DE DATES
+        col_d1, col_d2 = st.columns(2)
+        date_debut = col_d1.date_input("Date de début", today - timedelta(days=7))
+        date_fin = col_d2.date_input("Date de fin", today)
+        
+        if date_debut <= date_fin:
+            mask = (df_ventes['Date'] >= date_debut) & (df_ventes['Date'] <= date_fin)
+            stats_periode = df_ventes.loc[mask]
+            
+            b_periode = stats_periode['Benefice'].sum()
+            v_periode = stats_periode['Vente_Total'].sum()
+            
+            st.success(f"Résultats du **{date_debut.strftime('%d/%m/%Y')}** au **{date_fin.strftime('%d/%m/%Y')}**")
+            
+            res1, res2 = st.columns(2)
+            res1.metric("Ventes Totales (CA)", f"{v_periode:,.2f} DA")
+            res2.metric("Bénéfice Net Période", f"{b_periode:,.2f} DA")
+            
+            if not stats_periode.empty:
+                with st.expander("Voir le détail des ventes de cette période"):
+                    st.dataframe(stats_periode[['Date', 'Article', 'Qte', 'Vente_Total', 'Benefice']], use_container_width=True)
+        else:
+            st.error("Erreur : La date de début doit être avant la date de fin.")
 
     with tabs[3]: # ONGLET HISTORIQUE
         st.subheader("Historique Complet des Ventes")
         st.dataframe(df_ventes.sort_values(by='Date', ascending=False), use_container_width=True)
 
-    with tabs[1]:
+    with tabs[1]: # STOCK
         st.subheader("Inventaire")
         with st.expander("➕ Ajouter un Produit"):
             n = st.text_input("Nom de l'article")
@@ -118,8 +139,8 @@ with (tabs[0] if is_admin else st.container()):
         with st.expander("Voir le détail des ventes du jour"):
             st.table(ventes_du_jour[['Article', 'Qte', 'Vente_Total']])
             
-        if st.button("Imprimer / Valider la journée"):
-            st.success("Journée clôturée avec succès. L'employé doit vous remettre le montant affiché.")
+        if st.button("Valider la journée"):
+            st.success("Journée clôturée.")
 
     elif not df_stock.empty:
         art = st.selectbox("Article", df_stock["Article"])
