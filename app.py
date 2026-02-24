@@ -1,71 +1,58 @@
 import streamlit as st
-import pandas as pd
 from datetime import datetime
-import os
+import pandas as pd
 
 # Configuration
 st.set_page_config(page_title="Happy Store - Caisse", page_icon="🏪")
 
 # Initialisation
-if 'ventes_du_jour' not in st.session_state:
-    st.session_state.ventes_du_jour = []
+if 'ventes' not in st.session_state:
+    st.session_state.ventes = []
 
 # Titre
-st.title("🏪 Happy Store - Caisse")
+st.title("🏪 Happy Store - Caisse Simple")
 
-# Entrée des ventes
-with st.form("saisie_vente"):
-    col1, col2, col3 = st.columns(3)
+# Formulaire de saisie
+with st.form("saisie", clear_on_submit=True):
+    col1, col2, col3 = st.columns([3, 2, 1])
+    
     with col1:
-        article = st.text_input("Article", placeholder="Nom de l'article")
+        article = st.text_input("Article", placeholder="Nom de l'article", label_visibility="collapsed")
     with col2:
-        prix = st.number_input("Prix de vente (DA)", min_value=0.0, step=10.0)
+        prix = st.number_input("Prix", min_value=0.0, step=100.0, format="%.0f", label_visibility="collapsed")
     with col3:
-        st.write("")  # Espacement
-        st.write("")
-        ajouter = st.form_submit_button("➕ Ajouter la vente")
+        ajouter = st.form_submit_button("➕ Ajouter")
 
-if ajouter and article and prix > 0:
-    st.session_state.ventes_du_jour.append({
-        "Heure": datetime.now().strftime("%H:%M"),
-        "Article": article,
-        "Prix": prix
-    })
-    st.success(f"✅ {article} ajouté - {prix} DA")
-    st.rerun()
+    if ajouter and article and prix > 0:
+        st.session_state.ventes.append({
+            "Article": article,
+            "Prix (DA)": prix
+        })
+        st.rerun()
 
-# Affichage des ventes du jour
-if st.session_state.ventes_du_jour:
+# Affichage des ventes
+if st.session_state.ventes:
     st.divider()
-    st.subheader("📋 Ventes du jour")
     
     # Tableau des ventes
-    df = pd.DataFrame(st.session_state.ventes_du_jour)
+    df = pd.DataFrame(st.session_state.ventes)
     st.dataframe(df, use_container_width=True, hide_index=True)
     
-    # Calcul du total
-    total = df["Prix"].sum()
+    # Total
+    total = df["Prix (DA)"].sum()
     
-    # Total de fin de journée (TRÈS GROS)
     st.divider()
-    st.markdown(f"# 🟢 TOTAL DU JOUR : **{total:,.0f} DA**")
-    st.divider()
-    
-    # Bouton pour sauvegarder et réinitialiser
-    col1, col2, col3 = st.columns(3)
+    # BOUTON TOTAL EN FIN DE JOURNÉE (très gros)
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("📅 FIN DE JOURNÉE", type="primary", use_container_width=True):
-            # Sauvegarde dans un fichier CSV
-            fichier = f"ventes_{datetime.now().strftime('%Y%m%d')}.csv"
-            df.to_csv(fichier, index=False)
+        if st.button("💰 TOTAL FIN DE JOURNÉE", type="primary", use_container_width=True):
+            st.markdown(f"# 🎯 TOTAL : **{total:,.0f} DA**")
             
-            # Réinitialiser
-            st.session_state.ventes_du_jour = []
-            st.success(f"✅ Ventes sauvegardées dans {fichier}")
-            st.rerun()
+            # Option pour réinitialiser
+            if st.button("🔄 Nouvelle journée", use_container_width=True):
+                # Sauvegarde dans un fichier
+                df.to_csv(f"ventes_{datetime.now().strftime('%Y%m%d')}.csv", index=False)
+                st.session_state.ventes = []
+                st.rerun()
 else:
-    st.info("Aucune vente aujourd'hui. Commencez par ajouter des articles !")
-
-# Pied de page
-st.divider()
-st.caption(f"Dernière mise à jour : {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    st.info("Saisissez un article et son prix")
