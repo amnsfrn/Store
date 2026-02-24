@@ -4,10 +4,25 @@ import os
 from datetime import datetime
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Gestion Magasin Pro DZ", layout="wide", page_icon="🇩🇿")
+st.set_page_config(page_title="Happy Store Kids - Gestion", layout="wide", page_icon="🛍️")
 
+# --- INITIALISATION DES SESSIONS ---
+if 'acces_autorise' not in st.session_state:
+    st.session_state['acces_autorise'] = False
 if 'admin_connecte' not in st.session_state:
     st.session_state['admin_connecte'] = False
+
+# --- PROTECTION À L'ENTRÉE (MOT DE PASSE GÉNÉRAL) ---
+if not st.session_state['acces_autorise']:
+    st.title("🔐 Accès Sécurisé - Happy Store Kids")
+    entree = st.text_input("Entrez le mot de passe d'accès au magasin", type="password")
+    if st.button("Entrer"):
+        if entree == "happystorekids":
+            st.session_state['acces_autorise'] = True
+            st.rerun()
+        else:
+            st.error("Mot de passe incorrect")
+    st.stop() # Arrête le code ici tant que le mot de passe n'est pas bon
 
 # --- FONCTIONS DE DONNÉES ---
 def load_data(file, columns):
@@ -25,23 +40,25 @@ df_ventes = load_data("ventes.csv", ["Date", "Article", "Qte", "Vente_Total", "B
 df_config = load_data("config.csv", ["Type", "Valeur"])
 
 # --- BARRE LATÉRALE ---
-st.sidebar.title("🔐 Espace Admin")
+st.sidebar.title("🛂 Contrôle")
 
 if not st.session_state['admin_connecte']:
-    pwd = st.sidebar.text_input("Mot de passe Admin", type="password")
+    st.sidebar.subheader("Connexion Admin")
+    pwd = st.sidebar.text_input("Code Secret Admin", type="password")
     if st.sidebar.button("Se connecter"):
         if pwd == "9696":
             st.session_state['admin_connecte'] = True
             st.rerun()
         else:
-            st.sidebar.error("Incorrect")
+            st.sidebar.error("Code incorrect")
 else:
-    if st.sidebar.button("🔴 Déconnexion"):
+    st.sidebar.success("✅ Mode ADMIN actif")
+    if st.sidebar.button("🔴 Déconnexion Admin"):
         st.session_state['admin_connecte'] = False
         st.rerun()
 
     st.sidebar.markdown("---")
-    st.sidebar.subheader("⚙️ Paramètres des Frais")
+    st.sidebar.subheader("⚙️ Configuration des Frais")
     
     # Saisie des frais
     n_loyer = st.sidebar.number_input("Loyer Mensuel", value=0.0)
@@ -53,68 +70,78 @@ else:
     if st.sidebar.button("💾 Enregistrer Frais"):
         d = [["Loyer", n_loyer], ["Salaire", n_salaire], ["Factures_Trim", n_trim], ["Casnos", n_casnos], ["Impots", n_impots]]
         save_data(pd.DataFrame(d, columns=["Type", "Valeur"]), "config.csv")
-        st.sidebar.success("OK !")
+        st.sidebar.success("Frais sauvegardés !")
         st.rerun()
 
-# --- CALCUL DES CHARGES (Version simplifiée sans erreur) ---
+# --- CALCUL DES CHARGES ---
 frais_mensuels = 0.0
 if not df_config.empty:
     for t, v in zip(df_config['Type'], df_config['Valeur']):
         if t == "Loyer" or t == "Salaire": frais_mensuels += float(v)
         if t == "Factures_Trim": frais_mensuels += float(v) / 3
-        if t == "Casnos" or t == "Impots": frais_mensuels += float(v) / 12
+        if t in ["Casnos", "Impots"]: frais_mensuels += float(v) / 12
 
 # --- INTERFACE ---
 is_admin = st.session_state['admin_connecte']
 
 if is_admin:
-    st.title("📊 Tableau de Bord Admin")
+    st.title("📊 Direction - Happy Store Kids")
     brut = df_ventes['Benefice'].sum()
     net = brut - frais_mensuels
     
     c1, c2 = st.columns(2)
     c1.metric("Bénéfice Brut Total", f"{brut:,.2f} DA")
-    c2.metric("Bénéfice NET Mensuel Estime", f"{net:,.2f} DA")
+    c2.metric("Bénéfice NET Mensuel", f"{net:,.2f} DA")
 
-    tabs = st.tabs(["🛒 Caisse", "📦 Stock", "📈 Historique"])
+    tabs = st.tabs(["🛒 Caisse", "📦 Stock & Achats", "📈 Historique & Frais"])
     
     with tabs[1]:
-        st.subheader("Inventaire")
-        with st.expander("Ajouter Produit"):
-            name = st.text_input("Nom")
-            p_a = st.number_input("Achat")
-            p_v = st.number_input("Vente")
-            q_i = st.number_input("Quantité", min_value=1)
-            if st.button("Ajouter"):
-                new_item = pd.DataFrame([[name, p_a, 0, p_v, q_i]], columns=df_stock.columns)
+        st.subheader("Gestion des Articles")
+        with st.expander("Ajouter un nouveau produit"):
+            name = st.text_input("Nom de l'article")
+            col_a, col_b = st.columns(2)
+            p_a = col_a.number_input("Prix d'Achat")
+            p_f = col_a.number_input("Frais (Transport/Douane)")
+            p_v = col_b.number_input("Prix de Vente")
+            q_i = col_b.number_input("Quantité en stock", min_value=1)
+            if st.button("Ajouter au stock"):
+                new_item = pd.DataFrame([[name, p_a, p_f, p_v, q_i]], columns=df_stock.columns)
                 df_stock = pd.concat([df_stock, new_item], ignore_index=True)
                 save_data(df_stock, "stock.csv")
+                st.success("Produit ajouté !")
                 st.rerun()
-        st.dataframe(df_stock)
+        st.dataframe(df_stock, use_container_width=True)
         
     with tabs[2]:
-        st.subheader("Ventes")
-        st.dataframe(df_ventes)
+        st.subheader("Historique des ventes")
+        st.dataframe(df_ventes, use_container_width=True)
 else:
-    st.title("🏪 Caisse Employé")
+    st.title("🏪 Caisse Magasin")
 
-# --- CAISSE (ACCESSIBLE SELON MODE) ---
+# --- CAISSE ---
 with (tabs[0] if is_admin else st.container()):
     if not df_stock.empty:
-        art = st.selectbox("Article", df_stock["Article"])
-        qte = st.number_input("Quantité", min_value=1, step=1)
-        if st.button("Valider"):
-            idx = df_stock[df_stock["Article"] == art].index[0]
+        art = st.selectbox("Sélectionner l'article", df_stock["Article"])
+        idx = df_stock[df_stock["Article"] == art].index[0]
+        st.info(f"Prix : {df_stock.at[idx, 'PV']:,.2f} DA | En stock : {df_stock.at[idx, 'Quantite']}")
+        qte = st.number_input("Quantité à vendre", min_value=1, step=1)
+        
+        if st.button("Valider la Vente"):
             if df_stock.at[idx, "Quantite"] >= qte:
-                # Calcul
                 p_v = df_stock.at[idx, "PV"]
                 p_a = df_stock.at[idx, "PA"]
-                benef = qte * (p_v - p_a)
-                # Save
+                p_f = df_stock.at[idx, "Frais"]
+                benef = qte * (p_v - (p_a + p_f))
+                
+                # Sauvegarde
                 new_v = pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), art, qte, qte*p_v, benef]], columns=df_ventes.columns)
                 df_ventes = pd.concat([df_ventes, new_v], ignore_index=True)
                 df_stock.at[idx, "Quantite"] -= qte
                 save_data(df_ventes, "ventes.csv")
                 save_data(df_stock, "stock.csv")
-                st.success("Vendu !")
+                st.success("Vente enregistrée avec succès !")
                 st.rerun()
+            else:
+                st.error("Stock insuffisant !")
+    else:
+        st.warning("Le stock est vide.")
