@@ -6,7 +6,7 @@ from datetime import datetime
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="Happy Store Kids", layout="wide")
 
-# Initialisation stricte des variables de session
+# Initialisation ultra-sécurisée
 if 'panier' not in st.session_state:
     st.session_state['panier'] = []
 if 'acces_autorise' not in st.session_state:
@@ -19,8 +19,10 @@ def load_data(file, columns):
     if os.path.exists(file):
         try:
             df = pd.read_csv(file)
-            if not df.empty and 'Date' in df.columns:
-                df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce').dt.date
+            # Force les colonnes numériques pour éviter les TypeError
+            for col in ["PA", "Frais", "PV", "Quantite", "Vente_Total", "Benefice"]:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
             return df
         except:
             return pd.DataFrame(columns=columns)
@@ -32,7 +34,7 @@ def save_data(df, file):
 df_stock = load_data("stock.csv", ["Article", "PA", "Frais", "PV", "Quantite"])
 df_ventes = load_data("ventes.csv", ["Date", "Article", "Qte", "Vente_Total", "Benefice"])
 
-# --- 3. BARRE LATÉRALE (DÉCONNEXION) ---
+# --- 3. BARRE LATÉRALE ---
 with st.sidebar:
     st.title("⚙️ Menu")
     if st.session_state['acces_autorise'] or st.session_state['admin_connecte']:
@@ -46,10 +48,8 @@ if not st.session_state['acces_autorise'] and not st.session_state['admin_connec
     u = st.text_input("Utilisateur")
     p = st.text_input("Mot de passe", type="password")
     if st.button("Se connecter"):
-        # Mot de passe admin mis à jour selon votre demande
         if u.lower() == "admin" and p == "admin0699302032":
-            st.session_state['admin_connecte'] = True
-            st.session_state['acces_autorise'] = True
+            st.session_state['admin_connecte'], st.session_state['acces_autorise'] = True, True
             st.rerun()
         elif u.lower() == "user" and p == "0699302032":
             st.session_state['acces_autorise'] = True
@@ -60,10 +60,7 @@ if not st.session_state['acces_autorise'] and not st.session_state['admin_connec
 
 # --- 5. NAVIGATION ---
 is_admin = st.session_state['admin_connecte']
-if is_admin:
-    tabs = st.tabs(["🛒 Caisse", "📦 Stock"])
-else:
-    tabs = st.tabs(["🛒 Caisse"])
+tabs = st.tabs(["🛒 Caisse", "📦 Stock"]) if is_admin else st.tabs(["🛒 Caisse"])
 
 # --- 6. ONGLET CAISSE ---
 with tabs[0]:
@@ -75,7 +72,7 @@ with tabs[0]:
     recherche = st.text_input("⌨️ Chercher un article :", key=f"search_{st.session_state.search_key}")
     
     if recherche:
-        mask = df_stock["Article"].str.contains(recherche, case=False, na=False) & (df_stock["Quantite"] > 0)
+        mask = df_stock["Article"].astype(str).str.contains(recherche, case=False, na=False) & (df_stock["Quantite"] > 0)
         suggestions = df_stock[mask]
         
         if not suggestions.empty:
@@ -89,7 +86,7 @@ with tabs[0]:
                             st.session_state['panier'][index_ex]['Qte'] += 1
                     else:
                         st.session_state['panier'].append({
-                            'Article': item['Article'], 
+                            'Article': str(item['Article']), 
                             'PV': float(item['PV']),
                             'Qte': 1, 
                             'PA': float(item['PA']),
@@ -113,19 +110,21 @@ with tabs[0]:
             if col4.button("❌", key=f"del_{idx}"):
                 st.session_state['panier'].pop(idx)
                 st.rerun()
-            total_general += (p['PV'] * p['Qte'])
+            total_general += float(p['PV'] * p['Qte'])
 
-        # AFFICHAGE DU TOTAL EN TRÈS GROS
+        # --- TOTAL AFFICHÉ TRÈS GROS ---
         st.write("")
-        st.markdown(f"<h1 style='text-align: center; border: 5px solid black; padding: 20px;'>TOTAL : {total_general:,.0f} DA</h1>", unsafe_content_html=True)
+        st.write(f"## TOTAL : **{total_general:,.0f} DA**")
         st.write("")
 
         if st.button("💰 VALIDER ET ENCAISSER", use_container_width=True, type="primary"):
             for p in st.session_state['panier']:
-                benef = p['Qte'] * (p['PV'] - (p['PA'] + p['Frais']))
+                # Calcul profit
+                benef = float(p['Qte']) * (float(p['PV']) - (float(p['PA']) + float(p['Frais'])))
                 new_v = pd.DataFrame([[datetime.now().date(), p['Article'], p['Qte'], p['PV']*p['Qte'], benef]], 
                                      columns=["Date", "Article", "Qte", "Vente_Total", "Benefice"])
                 df_ventes = pd.concat([df_ventes, new_v], ignore_index=True)
+                # Mise à jour stock
                 df_stock.loc[df_stock["Article"] == p['Article'], "Quantite"] -= p['Qte']
             
             save_data(df_ventes, "ventes.csv")
@@ -139,5 +138,5 @@ with tabs[0]:
 # --- 7. STOCK (ADMIN) ---
 if is_admin:
     with tabs[1]:
-        st.subheader("📦 Inventaire du Stock")
+        st.subheader("📦 Inventaire")
         st.dataframe(df_stock, use_container_width=True)
