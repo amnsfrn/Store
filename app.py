@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Happy Store Kids - Gestion", layout="wide", page_icon="🛍️")
+st.set_page_config(page_title="Happy - Gestion", layout="wide", page_icon="🛍️")
 
 # --- INITIALISATION DES SESSIONS ---
 if 'acces_autorise' not in st.session_state:
