@@ -14,7 +14,7 @@ if 'admin_connecte' not in st.session_state:
 
 # --- PROTECTION À L'ENTRÉE (MOT DE PASSE GÉNÉRAL) ---
 if not st.session_state['acces_autorise']:
-    st.title("🔐 Accès Sécurisé - Happy Store Kids")
+    st.title("🔐 Accès Sécurisé - Happy ")
     entree = st.text_input("Entrez le mot de passe d'accès au magasin", type="password")
     if st.button("Entrer"):
         if entree == "happystorekids":
