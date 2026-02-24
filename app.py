@@ -57,71 +57,78 @@ if is_admin:
     tabs = st.tabs(["🛒 Caisse", "📦 Stock & Validations", "💰 Bénéfices", "📜 Historiques"])
     
     with tabs[1]: # STOCK & VALIDATIONS
+        # 1. VALEUR DU STOCK
+        st.subheader("💰 Valeur de l'Inventaire")
+        val_achat = ((df_stock['PA'] + df_stock['Frais']) * df_stock['Quantite']).sum()
+        val_vente = (df_stock['PV'] * df_stock['Quantite']).sum()
+        
+        c_v1, c_v2, c_v3 = st.columns(3)
+        c_v1.metric("Capital Investi (Achat)", f"{val_achat:,.2f} DA")
+        c_v2.metric("Valeur Marchande (Vente)", f"{val_vente:,.2f} DA")
+        c_v3.metric("Marge Potentielle", f"{(val_vente - val_achat):,.2f} DA")
+        
+        st.divider()
+
+        # 2. VALIDATIONS EN ATTENTE
         st.subheader("✅ Demandes d'arrivage à valider")
         if not df_demandes.empty:
             for i, row in df_demandes.iterrows():
-                with st.expander(f"Demande : {row['Article']} (+{row['Qte_Ajout']})", expanded=True):
-                    c1, c2, c3, c4 = st.columns(4)
-                    pa_val = c1.number_input(f"Prix d'Achat (Unitaire)", min_value=0.0, key=f"pa_{i}")
-                    frais_val = c2.number_input(f"Frais (Unitaire)", min_value=0.0, key=f"fr_{i}")
-                    pv_final = c3.number_input(f"Prix de Vente (PV)", min_value=0.0, value=float(row['PV_Suggere']), key=f"pv_{i}")
-                    
-                    if c4.button("Confirmer l'Entrée", key=f"btn_{i}"):
-                        # Mise à jour du stock
+                with st.expander(f"Demande : {row['Article']} (+{row['Qte_Ajout']})"):
+                    col_a, col_b, col_c, col_d = st.columns(4)
+                    pa_val = col_a.number_input(f"PA Unitaire", min_value=0.0, key=f"pa_{i}")
+                    fr_val = col_b.number_input(f"Frais Unitaire", min_value=0.0, key=f"fr_{i}")
+                    pv_f = col_c.number_input(f"PV Final", min_value=0.0, value=float(row['PV_Suggere']), key=f"pv_{i}")
+                    if col_d.button("Valider", key=f"btn_{i}"):
                         if row['Article'] in df_stock['Article'].values:
                             idx = df_stock[df_stock["Article"] == row['Article']].index[0]
                             df_stock.at[idx, "Quantite"] += int(row['Qte_Ajout'])
-                            df_stock.at[idx, "PA"] = pa_val
-                            df_stock.at[idx, "Frais"] = frais_val
-                            df_stock.at[idx, "PV"] = pv_final
+                            df_stock.at[idx, "PA"], df_stock.at[idx, "Frais"], df_stock.at[idx, "PV"] = pa_val, fr_val, pv_f
                         else:
-                            new_item = pd.DataFrame([[row['Article'], pa_val, frais_val, pv_final, row['Qte_Ajout']]], columns=df_stock.columns)
+                            new_item = pd.DataFrame([[row['Article'], pa_val, fr_val, pv_f, row['Qte_Ajout']]], columns=df_stock.columns)
                             df_stock = pd.concat([df_stock, new_item], ignore_index=True)
-                        
-                        # Historique
-                        new_h = pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), row['Article'], row['Qte_Ajout'], "User (Validé Admin)"]], columns=df_hist_stock.columns)
-                        df_hist_stock = pd.concat([df_hist_stock, new_h], ignore_index=True)
-                        
-                        # Nettoyage
                         df_demandes = df_demandes.drop(i)
-                        save_data(df_stock, "stock.csv")
-                        save_data(df_hist_stock, "hist_stock.csv")
-                        save_data(df_demandes, "demandes_stock.csv")
-                        st.success(f"{row['Article']} ajouté au stock !")
+                        save_data(df_stock, "stock.csv"); save_data(df_demandes, "demandes_stock.csv")
                         st.rerun()
-        else:
-            st.info("Aucune demande en attente.")
+        else: st.write("Aucune demande.")
 
         st.divider()
-        st.subheader("📦 Inventaire Actuel")
-        # Tri
-        tri = st.selectbox("Trier par :", ["Nom (A-Z)", "Quantité (Croissant)"])
-        df_display = df_stock.sort_values("Article") if tri == "Nom (A-Z)" else df_stock.sort_values("Quantite")
-        st.dataframe(df_display, use_container_width=True)
 
-    # ... (Tabs Caisse, Bénéfices, Historiques identiques)
+        # 3. RECHERCHE ET LISTE
+        st.subheader("📦 Inventaire & Recherche")
+        search = st.text_input("🔍 Rechercher un produit par nom...", "")
+        
+        df_filtered = df_stock[df_stock['Article'].str.contains(search, case=False, na=False)]
+        
+        # Affichage avec bouton supprimer
+        for idx, row in df_filtered.iterrows():
+            c_nom, c_qte, c_pv, c_del = st.columns([3, 1, 1, 1])
+            c_nom.write(f"**{row['Article']}**")
+            c_qte.write(f"{row['Quantite']} en stock")
+            c_pv.write(f"{row['PV']} DA")
+            if c_del.button("🗑️ Supprimer", key=f"del_{idx}"):
+                df_stock = df_stock.drop(idx)
+                save_data(df_stock, "stock.csv")
+                st.warning(f"{row['Article']} supprimé.")
+                st.rerun()
 
 else: # INTERFACE EMPLOYÉ
     st.title("🏪 Espace Employé")
-    t1, t2 = st.tabs(["🛒 Caisse", "📦 Arrivage Marchandise"])
-    
+    t1, t2 = st.tabs(["🛒 Caisse", "📦 Arrivage Stock"])
     with t2:
         st.subheader("Signaler une réception")
-        # Recherche intelligente
         liste_art = sorted(df_stock["Article"].tolist()) + ["--- NOUVEL ARTICLE ---"]
         choix = st.selectbox("Article reçu :", liste_art)
-        
         nom_art = st.text_input("Nom de l'article") if choix == "--- NOUVEL ARTICLE ---" else choix
         qte_art = st.number_input("Quantité reçue", min_value=1)
-        pv_sug = st.number_input("Prix de Vente (PV) étiqueté", min_value=0.0)
-        
-        if st.button("Envoyer pour Validation Admin"):
-            if nom_art:
-                new_d = pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), nom_art, qte_art, pv_sug]], 
-                                     columns=["Date", "Article", "Qte_Ajout", "PV_Suggere"])
-                df_demandes = pd.concat([df_demandes, new_d], ignore_index=True)
-                save_data(df_demandes, "demandes_stock.csv")
-                st.success("Demande envoyée ! Le stock sera mis à jour après validation du patron.")
+        pv_sug = st.number_input("Prix de Vente (PV) suggéré", min_value=0.0)
+        if st.button("Envoyer à l'Admin"):
+            new_d = pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), nom_art, qte_art, pv_sug]], 
+                                 columns=["Date", "Article", "Qte_Ajout", "PV_Suggere"])
+            df_demandes = pd.concat([df_demandes, new_d], ignore_index=True)
+            save_data(df_demandes, "demandes_stock.csv")
+            st.info("Demande envoyée.")
 
-# --- MODULE CAISSE ---
-# (Reprendre ici le code de vente/retour/fin de journée précédemment fourni)
+# --- MODULE CAISSE (ADMIN & USER) ---
+with (tabs[0] if is_admin else t1):
+    # Logique de vente/retour/fin de journée habituelle
+    st.write("Gestion des transactions...")
