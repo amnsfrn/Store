@@ -4,20 +4,17 @@ import os
 from datetime import datetime, timedelta
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Happy Store Kids - Gestion", layout="wide", page_icon="🛍️")
+st.set_page_config(page_title="Happy Store Kids - Gestion Pro", layout="wide", page_icon="🛍️")
 
-# --- INITIALISATION DES SESSIONS ---
-if 'acces_autorise' not in st.session_state:
-    st.session_state['acces_autorise'] = False
-if 'admin_connecte' not in st.session_state:
-    st.session_state['admin_connecte'] = False
+if 'acces_autorise' not in st.session_state: st.session_state['acces_autorise'] = False
+if 'admin_connecte' not in st.session_state: st.session_state['admin_connecte'] = False
 
 # --- FONCTIONS DE DONNÉES ---
 def load_data(file, columns):
     if os.path.exists(file):
         try:
             df = pd.read_csv(file)
-            if 'Date' in df.columns and file != "sessions.csv":
+            if 'Date' in df.columns and file not in ["sessions.csv", "demandes_stock.csv"]:
                 df['Date'] = pd.to_datetime(df['Date'], dayfirst=True).dt.date
             return df
         except: return pd.DataFrame(columns=columns)
@@ -33,35 +30,34 @@ def log_session(profil):
     df_logs = pd.concat([df_logs, new_log], ignore_index=True)
     save_data(df_logs, "sessions.csv")
 
-# Chargement des fichiers
+# Chargement
 df_stock = load_data("stock.csv", ["Article", "PA", "Frais", "PV", "Quantite"])
 df_ventes = load_data("ventes.csv", ["Date", "Article", "Qte", "Vente_Total", "Benefice"])
 df_sessions = load_data("sessions.csv", ["Horodatage", "Profil"])
+df_demandes = load_data("demandes_stock.csv", ["Date", "Article", "Qte_Ajout", "Statut"])
+df_hist_stock = load_data("hist_stock.csv", ["Date", "Article", "Qte_Ajoutee", "Par"])
 
-# --- ÉCRAN DE VERROUILLAGE (LOGIN) ---
+# --- LOGIN D'ENTRÉE ---
 if not st.session_state['acces_autorise']:
     st.title("🔐 Happy Store Kids - Connexion")
-    col_log1, col_log2 = st.columns(2)
-    user_input = col_log1.text_input("Nom d'utilisateur")
-    pass_input = col_log2.text_input("Mot de passe", type="password")
-    
-    if st.button("Se connecter au magasin"):
-        if user_input == "user" and pass_input == "0699302032":
+    u = st.text_input("Username (Utilisateur)")
+    p = st.text_input("Mot de passe", type="password")
+    if st.button("Se connecter"):
+        if u == "user" and p == "0699302032":
             st.session_state['acces_autorise'] = True
-            log_session("User (Caisse)")
+            log_session("User (Employé)")
             st.rerun()
-        else:
-            st.error("Identifiants incorrects")
+        else: st.error("Identifiants incorrects")
     st.stop()
 
-# --- BARRE LATÉRALE ---
+# --- SIDEBAR ADMIN ---
 st.sidebar.title("🛂 Contrôle")
 if not st.session_state['admin_connecte']:
-    pwd_admin = st.sidebar.text_input("Code Secret Admin", type="password")
+    pwd_admin = st.sidebar.text_input("Code Admin", type="password")
     if st.sidebar.button("Débloquer Admin"):
         if pwd_admin == "9696":
             st.session_state['admin_connecte'] = True
-            log_session("Admin (Accès Totale)")
+            log_session("Admin (Direction)")
             st.rerun()
 else:
     if st.sidebar.button("🔴 Déconnexion Admin"):
@@ -70,46 +66,99 @@ else:
 
 is_admin = st.session_state['admin_connecte']
 
-# --- INTERFACE ---
+# --- INTERFACE PRINCIPALE ---
 if is_admin:
     st.title("📊 Direction - Happy Store Kids")
-    tabs = st.tabs(["🛒 Caisse", "📦 Stock", "💰 Bénéfices", "📜 Historiques"])
+    tabs = st.tabs(["🛒 Caisse", "📦 Stock & Validations", "💰 Bénéfices", "📜 Historiques"])
+    
+    with tabs[1]: # GESTION STOCK (ADMIN)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("✅ Demandes de l'employé")
+            if not df_demandes.empty:
+                for i, row in df_demandes.iterrows():
+                    c_art, c_qte, c_btn = st.columns([2, 1, 1])
+                    c_art.write(f"**{row['Article']}**")
+                    c_qte.write(f"+{row['Qte_Ajout']}")
+                    if c_btn.button("Valider", key=f"val_{i}"):
+                        idx = df_stock[df_stock["Article"] == row['Article']].index[0]
+                        df_stock.at[idx, "Quantite"] += int(row['Qte_Ajout'])
+                        new_h = pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), row['Article'], row['Qte_Ajout'], "User (Validé par Admin)"]], columns=df_hist_stock.columns)
+                        df_hist_stock = pd.concat([df_hist_stock, new_h], ignore_index=True)
+                        df_demandes = df_demandes.drop(i)
+                        save_data(df_stock, "stock.csv"); save_data(df_hist_stock, "hist_stock.csv"); save_data(df_demandes, "demandes_stock.csv")
+                        st.rerun()
+            else: st.write("Aucune demande en attente.")
 
-    with tabs[2]: # ONGLET BÉNÉFICES
-        st.subheader("Analyse des Gains")
-        # (Calculs de périodes identiques à votre version précédente)
-        # ...
-
-    with tabs[3]: # ONGLET HISTORIQUES (NOUVEAU)
-        sub_tab1, sub_tab2 = st.tabs(["📈 Ventes", "🔑 Sessions de Connexion"])
-        with sub_tab1:
-            st.dataframe(df_ventes.sort_values(by='Date', ascending=False), use_container_width=True)
-        with sub_tab2:
-            st.subheader("Journal des connexions")
-            st.write("Voici qui s'est connecté et à quelle heure :")
-            st.dataframe(df_sessions.sort_values(by='Horodatage', ascending=False), use_container_width=True)
-
-    with tabs[1]: # STOCK
-        # (Interface de gestion de stock identique)
-        st.subheader("Inventaire")
+        with col2:
+            st.subheader("⚡ Alimentation DIRECTE")
+            art_a = st.selectbox("Article à ajouter", df_stock["Article"], key="adm_add")
+            qte_a = st.number_input("Quantité à ajouter au stock", min_value=1)
+            if st.button("Ajouter Directement"):
+                idx = df_stock[df_stock["Article"] == art_a].index[0]
+                df_stock.at[idx, "Quantite"] += qte_a
+                new_h = pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), art_a, qte_a, "Admin (Direct)"]], columns=df_hist_stock.columns)
+                df_hist_stock = pd.concat([df_hist_stock, new_h], ignore_index=True)
+                save_data(df_stock, "stock.csv"); save_data(df_hist_stock, "hist_stock.csv")
+                st.success(f"Stock mis à jour : {art_a} (+{qte_a})")
+                st.rerun()
+        st.divider()
+        st.subheader("📦 État du Stock")
         st.dataframe(df_stock, use_container_width=True)
 
-else:
-    st.title("🏪 Caisse Magasin")
-    st.write(f"Bienvenue. Session ouverte à : {datetime.now().strftime('%H:%M')}")
+    with tabs[2]: # BÉNÉFICES
+        st.subheader("💰 Analyse Financière")
+        today = datetime.now().date()
+        col_d1, col_d2 = st.columns(2)
+        d_deb = col_d1.date_input("Du", today - timedelta(days=7))
+        d_fin = col_d2.date_input("Au", today)
+        mask = (df_ventes['Date'] >= d_deb) & (df_ventes['Date'] <= d_fin)
+        res = df_ventes.loc[mask]
+        st.metric("Bénéfice Net sur la période", f"{res['Benefice'].sum():,.2f} DA")
+        st.dataframe(res, use_container_width=True)
+
+    with tabs[3]: # HISTORIQUES
+        h1, h2, h3 = st.tabs(["Ventes", "Entrées Stock", "Connexions"])
+        with h1: st.dataframe(df_ventes.sort_values(by="Date", ascending=False))
+        with h2: st.dataframe(df_hist_stock.sort_values(by="Date", ascending=False))
+        with h3: st.dataframe(df_sessions.sort_values(by="Horodatage", ascending=False))
+
+else: # INTERFACE EMPLOYÉ
+    st.title("🏪 Espace Employé")
+    t1, t2 = st.tabs(["🛒 Caisse", "📦 Arrivage Stock"])
+    with t2:
+        st.subheader("Signaler une réception de marchandise")
+        art_d = st.selectbox("Article reçu", df_stock["Article"])
+        qte_d = st.number_input("Quantité reçue", min_value=1)
+        if st.button("Envoyer pour validation Admin"):
+            new_d = pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), art_d, qte_d, "En attente"]], columns=df_demandes.columns)
+            df_demandes = pd.concat([df_demandes, new_d], ignore_index=True)
+            save_data(df_demandes, "demandes_stock.csv")
+            st.info("Demande envoyée à l'Admin.")
 
 # --- MODULE CAISSE (COMMUN) ---
-with (tabs[0] if is_admin else st.container()):
-    choix = st.radio("Action", ["Vente", "Retour Article", "Fin de Journée"], horizontal=True)
-    
-    # (Logique de vente et de retour identique)
-    if not df_stock.empty and choix != "Fin de Journée":
-        art = st.selectbox("Article", df_stock["Article"])
-        qte = st.number_input("Quantité", min_value=1, step=1)
+with (tabs[0] if is_admin else t1):
+    mode = st.radio("Action", ["Vente", "Retour Article", "Fin de Journée"], horizontal=True)
+    if mode == "Fin de Journée":
+        total = df_ventes[df_ventes['Date'] == datetime.now().date()]['Vente_Total'].sum()
+        st.metric("MONTANT CAISSE À RÉCUPÉRER", f"{total:,.2f} DA")
+    elif not df_stock.empty:
+        art_s = st.selectbox("Article", df_stock["Article"], key="caisse_art")
+        idx_s = df_stock[df_stock["Article"] == art_s].index[0]
+        qte_s = st.number_input("Quantité", min_value=1, step=1, key="caisse_qte")
         if st.button("Valider"):
-            # ... (Traitement de la vente)
-            st.success("Enregistré !")
+            p_v = df_stock.at[idx_s, "PV"]; p_a = df_stock.at[idx_s, "PA"]; p_f = df_stock.at[idx_s, "Frais"]
+            if mode == "Vente":
+                if df_stock.at[idx_s, "Quantite"] >= qte_s:
+                    new_v = pd.DataFrame([[datetime.now().date(), art_s, qte_s, qte_s*p_v, qte_s*(p_v-(p_a+p_f))]], columns=df_ventes.columns)
+                    df_ventes = pd.concat([df_ventes, new_v], ignore_index=True)
+                    df_stock.at[idx_s, "Quantite"] -= qte_s
+                    st.success("Vente validée !")
+                else: st.error("Stock insuffisant")
+            else: # Retour
+                new_v = pd.DataFrame([[datetime.now().date(), f"RETOUR: {art_s}", -qte_s, -(qte_s*p_v), -(qte_s*(p_v-(p_a+p_f)))]], columns=df_ventes.columns)
+                df_ventes = pd.concat([df_ventes, new_v], ignore_index=True)
+                df_stock.at[idx_s, "Quantite"] += qte_s
+                st.success("Retour validé !")
+            save_data(df_ventes, "ventes.csv"); save_data(df_stock, "stock.csv")
             st.rerun()
-    elif choix == "Fin de Journée":
-        # ... (Calcul clôture)
-        st.info("Clôture de caisse disponible")
