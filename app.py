@@ -2,9 +2,20 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime, timedelta
-import plotly.express as px
-import plotly.graph_objects as go
 import calendar
+import subprocess
+import sys
+
+# Installation automatique de plotly si nécessaire
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+except ImportError:
+    with st.spinner("Installation de plotly..."):
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "plotly"])
+        import plotly.express as px
+        import plotly.graph_objects as go
+    st.rerun()
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
