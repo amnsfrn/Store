@@ -22,10 +22,16 @@ def load_data(file, columns):
 def save_data(df, file):
     df.to_csv(file, index=False)
 
-# Chargement des fichiers
+# Chargement initial des fichiers
 df_stock = load_data("stock.csv", ["Article", "PA", "Frais", "PV", "Quantite"])
 df_ventes = load_data("ventes.csv", ["Date", "Article", "Qte", "Vente_Total", "Benefice"])
 df_config = load_data("config.csv", ["Type", "Valeur"])
+
+# --- FONCTION DE RÉCUPÉRATION DES FRAIS (DÉFINIE AVANT UTILISATION) ---
+def get_val(t, df):
+    if not df.empty and t in df['Type'].values:
+        return float(df[df['Type']==t]['Valeur'].values[0])
+    return 0.0
 
 # --- BARRE LATÉRALE : ESPACE ADMIN ---
 st.sidebar.title("🔐 Espace Admin")
@@ -47,22 +53,12 @@ else:
     st.sidebar.markdown("---")
     st.sidebar.subheader("⚙️ Configuration des Frais")
     
-    # Récupération des valeurs existantes
-    def get_val(t):
-        return float(df_config[df_config['Type']==t]['Valeur'].values[0]) if not df_config[df_config['Type']==t].empty else 0.0
-
-    l_actuel = get_val("Loyer")
-    s_actuel = get_val("Salaire")
-    f_trim_actuel = get_val("Factures_Trim")
-    casnos_actuel = get_val("Casnos_Annuel")
-    impots_actuel = get_val("Impots_Annuel")
-
-    # Formulaire de saisie
-    loyer_in = st.sidebar.number_input("Loyer Mensuel (DA)", value=l_actuel)
-    salaire_in = st.sidebar.number_input("Salaire Mensuel (DA)", value=s_actuel)
-    fact_trim_in = st.sidebar.number_input("Factures (Trimestrielles) (DA)", value=f_trim_actuel, help="Ex: Électricité, Eau, Internet")
-    casnos_in = st.sidebar.number_input("CASNOS (Annuelle) (DA)", value=casnos_actuel)
-    impots_in = st.sidebar.number_input("Impôts (Annuels) (DA)", value=impots_actuel)
+    # Formulaire de saisie avec valeurs actuelles
+    loyer_in = st.sidebar.number_input("Loyer Mensuel (DA)", value=get_val("Loyer", df_config))
+    salaire_in = st.sidebar.number_input("Salaire Mensuel (DA)", value=get_val("Salaire", df_config))
+    fact_trim_in = st.sidebar.number_input("Factures (Trimestrielles) (DA)", value=get_val("Factures_Trim", df_config))
+    casnos_in = st.sidebar.number_input("CASNOS (Annuelle) (DA)", value=get_val("Casnos_Annuel", df_config))
+    impots_in = st.sidebar.number_input("Impôts (Annuels) (DA)", value=get_val("Impots_Annuel", df_config))
     
     if st.sidebar.button("💾 Enregistrer tous les frais"):
         data = [
@@ -80,13 +76,12 @@ else:
 is_admin = st.session_state['admin_connecte']
 
 # --- CALCUL DES CHARGES MENSUELLES ---
-# On ramène tout au mois pour un calcul juste
 frais_mensuels = (
-    get_val("Loyer") + 
-    get_val("Salaire") + 
-    (get_val("Factures_Trim") / 3) + 
-    (get_val("Casnos_Annuel") / 12) + 
-    (get_val("Impots_Annuel") / 12)
+    get_val("Loyer", df_config) + 
+    get_val("Salaire", df_config) + 
+    (get_val("Factures_Trim", df_config) / 3) + 
+    (get_val("Casnos_Annuel", df_config) / 12) + 
+    (get_val("Impots_Annuel", df_config) / 12)
 )
 
 # --- INTERFACE PRINCIPALE ---
@@ -122,15 +117,14 @@ if is_admin:
 
     with tabs[2]:
         st.subheader("Détail des Charges Mensuelles")
-        st.write(f"- Loyer : {get_val('Loyer'):,.2f} DA")
-        st.write(f"- Salaire : {get_val('Salaire'):,.2f} DA")
-        st.write(f"- Part Factures (Trim/3) : {get_val('Factures_Trim')/3:,.2f} DA")
-        st.write(f"- Part CASNOS (Annuel/12) : {get_val('Casnos_Annuel')/12:,.2f} DA")
-        st.write(f"- Part Impôts (Annuel/12) : {get_val('Impots_Annuel')/12:,.2f} DA")
+        st.write(f"- Loyer : {get_val('Loyer', df_config):,.2f} DA")
+        st.write(f"- Salaire : {get_val('Salaire', df_config):,.2f} DA")
+        st.write(f"- Part Factures (Trim/3) : {get_val('Factures_Trim', df_config)/3:,.2f} DA")
+        st.write(f"- Part CASNOS (Annuel/12) : {get_val('Casnos_Annuel', df_config)/12:,.2f} DA")
+        st.write(f"- Part Impôts (Annuel/12) : {get_val('Impots_Annuel', df_config)/12:,.2f} DA")
         st.markdown("---")
         st.subheader("Historique des Ventes")
         st.dataframe(df_ventes, use_container_width=True)
-
 else:
     st.title("🏪 Caisse Magasin")
 
