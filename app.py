@@ -56,50 +56,54 @@ if is_admin:
 else:
     tabs = st.tabs(["🛒 Caisse Directe", "📩 Envoyer Arrivage"])
 
-# --- 1. CAISSE (RECHERCHE AU CLAVIER FORCÉE) ---
+# --- 1. CAISSE (PROPOSITIONS INSTANTANÉES) ---
 with tabs[0]:
     st.subheader("🛒 Terminal de Vente")
     if df_stock.empty:
         st.info("Stock vide.")
     else:
-        # Utilisation de text_input pour FORCER l'ouverture du clavier sur mobile
-        recherche = st.text_input("⌨️ TAPEZ LE NOM DE L'ARTICLE :", placeholder="Ex: Robe, Jeans...")
+        # Champ de texte qui déclenche la recherche
+        recherche = st.text_input("⌨️ Tapez le nom de l'article :", key="search_box")
         
         if recherche:
-            # Filtrer les articles qui contiennent les lettres tapées
-            suggestions = df_stock[df_stock["Article"].str.contains(recherche, case=False, na=False)]
+            # Filtrage en temps réel
+            mask = df_stock["Article"].str.contains(recherche, case=False, na=False)
+            suggestions = df_stock[mask]["Article"].tolist()
             
-            if not suggestions.empty:
-                choix = st.selectbox("Confirmez l'article trouvé :", suggestions["Article"].tolist())
+            if suggestions:
+                st.write("🔍 **Suggestions trouvées :**")
+                # Affichage des propositions sous forme de boutons pour sélection rapide
+                choix = st.radio("Cliquez sur l'article voulu :", suggestions, label_visibility="collapsed")
                 
-                info = df_stock[df_stock["Article"] == choix].iloc[0]
-                with st.form("vente_form", clear_on_submit=True):
-                    st.markdown(f"### 📦 {choix}")
-                    st.write(f"Stock actuel : {int(info['Quantite'])}")
-                    c1, c2 = st.columns(2)
-                    p_v = c1.number_input("Prix (DA)", value=float(info['PV']))
-                    q_v = c2.number_input("Quantité", min_value=1, max_value=int(info['Quantite']), step=1)
-                    
-                    if st.form_submit_button("✅ VALIDER LA VENTE"):
-                        benef = q_v * (p_v - (info['PA'] + info['Frais']))
-                        new_v = pd.DataFrame([[datetime.now().date(), choix, q_v, q_v*p_v, benef]], columns=df_ventes.columns)
-                        df_ventes = pd.concat([df_ventes, new_v], ignore_index=True)
-                        df_stock.loc[df_stock["Article"] == choix, "Quantite"] -= q_v
-                        save_data(df_ventes, "ventes.csv"); save_data(df_stock, "stock.csv")
-                        st.success("Vendu !")
-                        st.rerun()
+                if choix:
+                    info = df_stock[df_stock["Article"] == choix].iloc[0]
+                    with st.form("vente_form", clear_on_submit=True):
+                        st.info(f"Sélection : **{choix}** | Stock : **{int(info['Quantite'])}**")
+                        c1, c2 = st.columns(2)
+                        p_v = c1.number_input("Prix (DA)", value=float(info['PV']))
+                        q_v = c2.number_input("Quantité", min_value=1, max_value=int(info['Quantite']), step=1)
+                        
+                        if st.form_submit_button("✅ VALIDER LA VENTE"):
+                            benef = q_v * (p_v - (info['PA'] + info['Frais']))
+                            new_v = pd.DataFrame([[datetime.now().date(), choix, q_v, q_v*p_v, benef]], columns=df_ventes.columns)
+                            df_ventes = pd.concat([df_ventes, new_v], ignore_index=True)
+                            df_stock.loc[df_stock["Article"] == choix, "Quantite"] -= q_v
+                            save_data(df_ventes, "ventes.csv"); save_data(df_stock, "stock.csv")
+                            st.success(f"Vendu : {choix}")
+                            st.rerun()
             else:
-                st.warning("Aucun article ne correspond à votre recherche.")
+                st.warning("Aucun article trouvé.")
 
-# --- 2. GESTION STOCK (MODIFICATION AVEC RECHERCHE CLAVIER) ---
+# --- 2. GESTION STOCK (PROPOSITIONS ADMIN) ---
 if is_admin:
     with tabs[1]:
-        st.subheader("📦 Modifier/Supprimer")
-        recherche_edit = st.text_input("🔍 Rechercher article à modifier :", key="edit_search")
+        st.subheader("📦 Modifier un article")
+        recherche_edit = st.text_input("🔍 Chercher pour modifier :", key="edit_search")
         if recherche_edit:
-            suggestions_edit = df_stock[df_stock["Article"].str.contains(recherche_edit, case=False, na=False)]
-            if not suggestions_edit.empty:
-                art_edit = st.selectbox("Sélectionnez l'article :", suggestions_edit["Article"].tolist(), key="edit_select")
+            mask_edit = df_stock["Article"].str.contains(recherche_edit, case=False, na=False)
+            suggestions_edit = df_stock[mask_edit]["Article"].tolist()
+            if suggestions_edit:
+                art_edit = st.radio("Choisir l'article :", suggestions_edit, key="radio_edit")
                 idx = df_stock[df_stock["Article"] == art_edit].index[0]
                 row = df_stock.loc[idx]
                 with st.form("edit_stock"):
@@ -115,7 +119,7 @@ if is_admin:
                     if c2.form_submit_button("🗑️ Supprimer"):
                         df_stock = df_stock.drop(idx); save_data(df_stock, "stock.csv"); st.rerun()
 
-    # VALIDATIONS (RESTE IDENTIQUE AVEC FRAIS TOTAUX)
+    # VALIDATIONS (Frais Totaux)
     with tabs[2]:
         st.subheader("✅ Valider Arrivages")
         if df_demandes.empty: st.write("Rien à valider.")
